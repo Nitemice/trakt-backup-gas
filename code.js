@@ -1,16 +1,9 @@
-const authUrl = "https://api.trakt.tv/oauth/token";
-const apiUrl = "https://api.trakt.tv/users/me/";
-const pathList = [
-    "?extended=full", // profile info
-    "collection/movies?extended=metadata",
-    "collection/shows?extended=metadata",
-    "comments/all?include_replies=true",
-    "followers",
-    "following",
-    "friends",
-    "history/episodes?limit=250",
-    "history/movies?limit=250",
-    "ratings/episodes",
+var apiUrl = "https://api-v2launch.trakt.tv/users/";
+var pathList = [
+    "watchlist/movies",
+    "watchlist/shows",
+    "watchlist/seasons",
+    "watchlist/episodes",
     "ratings/movies",
     "ratings/shows",
     "ratings/seasons",
@@ -29,34 +22,40 @@ const pathList = [
 ];
 
 
-function grabJson(id) {
+function grabJson(id)
+{
     var file = DriveApp.getFileById(id).getAs("application/json");
     return JSON.parse(file.getDataAsString());
 }
 
-function findOrCreateFile(dir, name, content) {
-    var filename = name.replace("\/", "_") + ".json";
+function findOrCreateFile(dir, name, content)
+{
+    var filename = String(name).replace("\/", "_") + ".json";
     var file;
 
     // See if there's already a file in the indicated Google Drive folder
     var backupFolder = DriveApp.getFolderById(dir);
     var files = backupFolder.getFilesByName(filename);
-    if (files.hasNext()) {
+    if (files.hasNext())
+    {
         file = files.next();
         // Set the file contents
         file.setContent(content.getDataAsString());
         Logger.log("Updated existing file: " + filename);
     }
-    else {
+    else
+    {
         // Set the file contents
         file = backupFolder.createFile(content);
         // Set the file name
         file.setName(filename);
         Logger.log("Created new file: " + filename);
     }
+    return file;
 }
 
-function getData(config, baseUrl, path) {
+function getData(config, url)
+{
     var headers = {
         "Authorization": "Bearer " + config.authToken,
         "Content-Type": "application/json",
@@ -64,27 +63,30 @@ function getData(config, baseUrl, path) {
         "trakt-api-key": config.clientId
     };
 
-    var url = baseUrl + path;
     var response = UrlFetchApp.fetch(url, {
         headers: headers
     });
 
-    // Save the json file in the indicated Google Drive folder
-    var file = findOrCreateFile(config.backupDir, path, response.getBlob());
+    return response.getBlob();
 }
 
 
-function main() {
+function main()
+{
     // Retrieve config file
     var config = grabJson(configId);
 
     // Refresh auth
 
     // Iterate over each of the paths to backup
-    var userUrl = url + config.username + "/";
-    for (path of pathList) {
-        var backupUrl = userUrl + path;
-        getData(config, backupUrl);
-        Logger.log("X");
+    var userUrl = apiUrl + config.username + "/";
+    for (path of pathList)
+    {
+        var url = userUrl + path;
+        var data = getData(config, url, path);
+
+        // Save the json file in the indicated Google Drive folder
+        var file = findOrCreateFile(config.backupDir, path, data);
+        // Logger.log("X");
     }
 }
