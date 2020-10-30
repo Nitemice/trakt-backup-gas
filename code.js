@@ -1,19 +1,15 @@
-const authUrl = "https://api-v2launch.trakt.tv/oauth/token";
-const apiUrl = "https://api-v2launch.trakt.tv/users/me/";
+const authUrl = "https://api.trakt.tv/oauth/token";
+const apiUrl = "https://api.trakt.tv/users/me/";
 const pathList = [
-    "?extended=full", // = profile info
+    "?extended=full", // profile info
     "collection/movies?extended=metadata",
     "collection/shows?extended=metadata",
     "comments/all?include_replies=true",
     "followers",
     "following",
     "friends",
-    "history?limit=250",
-    // "history/episodes",
-    // "history/movies",
-    // "history/seasons",
-    // "history/shows",
-    // "lists",
+    "history/episodes?limit=250",
+    "history/movies?limit=250",
     "ratings/episodes",
     "ratings/movies",
     "ratings/seasons",
@@ -26,7 +22,6 @@ const pathList = [
     "watchlist/movies",
     "watchlist/seasons",
     "watchlist/shows",
-    //"likes" - no username
 ];
 
 
@@ -34,6 +29,13 @@ function grabJson(id)
 {
     var file = DriveApp.getFileById(id).getAs("application/json");
     return JSON.parse(file.getDataAsString());
+}
+
+function saveJson(id, content)
+{
+    var file = DriveApp.getFileById(id);
+    // Set the file contents
+    file.setContent(JSON.stringify(content));
 }
 
 function findOrCreateFolder(parentDir, foldername)
@@ -90,7 +92,32 @@ function getData(config, url)
         headers: headers
     });
 
-    return response.getBlob();
+    return response.getContentText();
+}
+
+function refreshAuth(config)
+{
+    var payload = {
+        "refresh_token": config.refreshToken,
+        "client_id": config.clientId,
+        "client_secret": config.clientSecret,
+        "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+        "grant_type": "refresh_token"
+    };
+
+    var options = {
+        'method': 'post',
+        'Content-Type': 'application/json',
+        'payload': payload
+    };
+    var response = UrlFetchApp.fetch(authUrl, options);
+    var newTokens = JSON.parse(response.getContentText());
+
+    // Save new tokens
+    config.authToken = newTokens.access_token;
+    config.refreshToken = newTokens.refresh_token;
+    // Store in JSON config
+    saveJson(configId, config);
 }
 
 function backupCore(config)
@@ -103,8 +130,12 @@ function backupCore(config)
 
         // Save the json file in the indicated Google Drive folder
         var filename = String(path).replace("\/", "_").split("?")[0];
+        if (filename.length < 1)
+        {
+            filename = config.username;
+        }
         filename += ".json";
-        var file = findOrCreateFile(config.backupDir, filename, data.getDataAsString());
+        var file = findOrCreateFile(config.backupDir, filename, data);
         // Logger.log("X");
     }
 }
@@ -117,7 +148,7 @@ function backupLists(config)
     var baseUrl = apiUrl + "lists/";
 
     // Retrieve a list of all the lists
-    var allLists = JSON.parse(getData(config, baseUrl).getDataAsString());
+    var allLists = JSON.parse(getData(config, baseUrl));
 
     // Iterate through the lists and retrieve each one
     for (list of allLists)
@@ -125,8 +156,8 @@ function backupLists(config)
         // Retrieve list items
         var path = list.ids.slug;
         var url = baseUrl + path;
-        var listItems = JSON.parse(getData(config, url + "/items").getDataAsString());
-        var listComments = JSON.parse(getData(config, url + "/comments").getDataAsString());
+        var listItems = JSON.parse(getData(config, url + "/items"));
+        var listComments = JSON.parse(getData(config, url + "/comments"));
 
         // Add list items & comments to other list data
         list.items = listItems;
@@ -144,11 +175,11 @@ function main()
     var config = grabJson(configId);
 
     // Refresh auth
+    refreshAuth(config);
 
     // Iterate over each of the paths to backup
     backupCore(config);
 
     // Request all lists separately
     backupLists(config);
-
 }
