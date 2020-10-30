@@ -97,6 +97,13 @@ function getData(config, url)
 
 function refreshAuth(config)
 {
+    // Check if the auth token has expired yet
+    var now = Date.now() / 1000;
+    if (now < config.expiry)
+    {
+        return;
+    }
+
     var payload = {
         "refresh_token": config.refreshToken,
         "client_id": config.clientId,
@@ -116,6 +123,7 @@ function refreshAuth(config)
     // Save new tokens
     config.authToken = newTokens.access_token;
     config.refreshToken = newTokens.refresh_token;
+    config.expiry = newTokens.created_at + newTokens.expires_in;
     // Store in JSON config
     saveJson(configId, config);
 }
