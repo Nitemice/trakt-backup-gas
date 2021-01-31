@@ -1,0 +1,5 @@
+*.code-workspace
+
+# Ignore files full of secrets
+config.js
+.clasp.json
