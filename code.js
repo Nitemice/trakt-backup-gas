@@ -25,60 +25,6 @@ const pathList = [
 ];
 
 
-function grabJson(id)
-{
-    var file = DriveApp.getFileById(id).getAs("application/json");
-    return JSON.parse(file.getDataAsString());
-}
-
-function saveJson(id, content)
-{
-    var file = DriveApp.getFileById(id);
-    // Set the file contents
-    file.setContent(JSON.stringify(content));
-}
-
-function findOrCreateFolder(parentDir, foldername)
-{
-    // See if there's already a folder in the indicated Google Drive folder
-    var backupFolder = DriveApp.getFolderById(parentDir);
-    var folders = backupFolder.getFoldersByName(foldername);
-
-    if (folders.hasNext())
-    {
-        return folders.next();
-    }
-    else
-    {
-        // Create a new folder
-        Logger.log("Created new folder: " + foldername);
-        return backupFolder.createFolder(foldername);
-    }
-}
-
-function findOrCreateFile(parentDir, filename, content)
-{
-    var file;
-
-    // See if there's already a file in the indicated Google Drive folder
-    var backupFolder = DriveApp.getFolderById(parentDir);
-    var files = backupFolder.getFilesByName(filename);
-    if (files.hasNext())
-    {
-        file = files.next();
-        // Set the file contents
-        file.setContent(content);
-        Logger.log("Updated existing file: " + filename);
-    }
-    else
-    {
-        // Create a new file with content
-        file = backupFolder.createFile(filename, content);
-        Logger.log("Created new file: " + filename);
-    }
-    return file;
-}
-
 function getData(config, url)
 {
     var headers = {
@@ -125,7 +71,7 @@ function refreshAuth(config)
     config.refreshToken = newTokens.refresh_token;
     config.expiry = newTokens.created_at + newTokens.expires_in;
     // Store in JSON config
-    saveJson(configId, config);
+    common.saveJson(configId, config);
 }
 
 function backupCore(config)
@@ -143,7 +89,7 @@ function backupCore(config)
             filename = config.username;
         }
         filename += ".json";
-        var file = findOrCreateFile(config.backupDir, filename, data);
+        var file = common.findOrCreateFile(config.backupDir, filename, data);
         // Logger.log("X");
     }
 }
@@ -151,7 +97,7 @@ function backupCore(config)
 function backupLists(config)
 {
     // Make a folder for all list files
-    var backupFolder = findOrCreateFolder(config.backupDir, "lists").getId();
+    var backupFolder = common.findOrCreateFolder(config.backupDir, "lists").getId();
 
     var baseUrl = apiUrl + "lists/";
 
@@ -172,7 +118,7 @@ function backupLists(config)
         list.comments = listComments;
 
         // Save the json file in the indicated Google Drive folder
-        var file = findOrCreateFile(backupFolder, path + ".json", JSON.stringify(list));
+        var file = common.findOrCreateFile(backupFolder, path + ".json", JSON.stringify(list));
         // Logger.log("X");
     }
 }
@@ -180,7 +126,7 @@ function backupLists(config)
 function main()
 {
     // Retrieve config file
-    var config = grabJson(configId);
+    var config = common.grabJson(configId);
 
     // Refresh auth
     refreshAuth(config);
