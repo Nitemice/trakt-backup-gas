@@ -41,7 +41,8 @@ function getData(config, url)
     return response.getContentText();
 }
 
-function refreshAuth(config)
+{
+function refreshAuth()
 {
     // Check if the auth token has expired yet
     var now = Date.now() / 1000;
@@ -74,7 +75,7 @@ function refreshAuth(config)
     common.saveJson(configId, config);
 }
 
-function backupCore(config)
+function backupCore()
 {
     // Iterate over each of the paths to backup
     for (path of pathList)
@@ -94,7 +95,7 @@ function backupCore(config)
     }
 }
 
-function backupLists(config)
+function backupLists()
 {
     // Make a folder for all list files
     var backupFolder = common.findOrCreateFolder(config.backupDir, "lists").getId();
@@ -125,15 +126,12 @@ function backupLists(config)
 
 function main()
 {
-    // Retrieve config file
-    var config = common.grabJson(configId);
-
     // Refresh auth
-    refreshAuth(config);
+    refreshAuth();
 
     // Iterate over each of the paths to backup
-    backupCore(config);
+    backupCore();
 
     // Request all lists separately
-    backupLists(config);
+    backupLists();
 }
