@@ -1,5 +1,6 @@
-const authUrl = "https://api.trakt.tv/oauth/token";
-const apiUrl = "https://api.trakt.tv/users/me/";
+const baseUrl = "https://api.trakt.tv/";
+const authUrl = baseUrl + "oauth/token";
+const apiUrl = baseUrl + "users/me/";
 const pathList = [
     "?extended=full", // profile info
     "collection/movies?extended=metadata",
@@ -41,18 +42,103 @@ function getData(config, url)
     return response.getContentText();
 }
 
+function getFreshAuth()
 {
+    // Retrieve refreshable auth info from scratch
+    // Using interactive "device" auth
+
+    // Initial Request - get code for user to enter
+    var options = {
+        'method': 'post',
+        'Content-Type': 'application/json',
+        'payload': {
+            "client_id": config.clientId,
+        }
+    };
+    var response = UrlFetchApp.fetch(baseUrl + "/oauth/device/code", options);
+
+    // Retrieve values from response
+    var initResp = JSON.parse(response.getContentText());
+    const deviceCode = initResp.device_code;
+    const expiry = initResp.expires_in;
+    const interval = initResp.interval;
+
+    // Show the user where to go & what to enter
+    Logger.log("Go to %s and enter: %s", initResp.verification_url,
+        initResp.user_code);
+
+    // Poll Request - check if the app is authorised yet
+    var queryTime = 0;
+    while (queryTime < expiry)
+    {
+        var payload = {
+            "code": deviceCode,
+            "client_id": config.clientId,
+            "client_secret": config.clientSecret,
+        };
+
+        options = {
+            'method': 'post',
+            'Content-Type': 'application/json',
+            'payload': payload,
+            'muteHttpExceptions': true
+        };
+
+        response = UrlFetchApp.fetch(baseUrl + "/oauth/device/token", options);
+        // Logger.log(response);
+
+        // If the response was a success, we're authorised
+        if (response.getResponseCode() == 200)
+        {
+            // Grab the values we're looking for and save
+            var newTokens = JSON.parse(response.getContentText());
+            var authProps = new Object();
+            authProps.authToken = newTokens.access_token;
+            authProps.refreshToken = newTokens.refresh_token;
+            authProps.expiry = newTokens.created_at + newTokens.expires_in;
+            return authProps;
+        }
+        // If the response is anything other than 'pending', something's wrong
+        else if (response.getResponseCode() != 400)
+        {
+            throw "Something went wrong polling for authorisation.";
+        }
+
+        // Let them know we're still waiting
+        Logger.log("Polling countdown: %s / %s ...", queryTime.toString(),
+            expiry.toString());
+
+        // Sleep until we can make another request
+        Utilities.sleep(interval * 1000);
+        queryTime += interval;
+    }
+
+}
+
 function refreshAuth()
 {
+    // Retrieve refreshable auth info
+    var userProperties = PropertiesService.getUserProperties();
+    var authProps = userProperties.getProperties();
+
+    // Check if refreshable auth info is there
+    if (!authProps.hasOwnProperty("refreshToken") ||
+        !authProps.hasOwnProperty("authToken"))
+    {
+        Logger.log("No access/refresh token. Need to authenticate.");
+        authProps = getFreshAuth(config);
+        // userProperties.setProperties(authProps);
+    }
+
     // Check if the auth token has expired yet
     var now = Date.now() / 1000;
-    if (now < config.expiry)
+    if (now < authProps.expiry)
     {
         return;
     }
 
     var payload = {
-        "refresh_token": config.refreshToken,
+        "refresh_token": authProps.refreshToken,
         "client_id": config.clientId,
         "client_secret": config.clientSecret,
         "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
@@ -68,11 +154,15 @@ function refreshAuth()
     var newTokens = JSON.parse(response.getContentText());
 
     // Save new tokens
-    config.authToken = newTokens.access_token;
-    config.refreshToken = newTokens.refresh_token;
-    config.expiry = newTokens.created_at + newTokens.expires_in;
-    // Store in JSON config
-    common.saveJson(configId, config);
+    authProps.authToken = newTokens.access_token;
+    authProps.refreshToken = newTokens.refresh_token;
+    authProps.expiry = newTokens.created_at + newTokens.expires_in;
+    // Store in user properties
+    userProperties.setProperties(authProps);
+
+    // Create an object with just the details we need for retrieving data
+    // TODO
+    return authProps;
 }
 
 function backupCore()
