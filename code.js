@@ -1,5 +1,6 @@
 const baseUrl = "https://api.trakt.tv/";
-const authUrl = baseUrl + "oauth/token";
+
+// Data URLs
 const apiUrl = baseUrl + "users/me/";
 const pathList = [
     "?extended=full", // profile info
@@ -25,14 +26,19 @@ const pathList = [
     "watchlist/shows",
 ];
 
+// Authentication URLs
+const authUrl = baseUrl + "/oauth/device/code";
+const pollUrl = baseUrl + "/oauth/device/token";
+const refreshUrl = baseUrl + "/oauth/token";
 
-function getData(config, url)
+
+function getData(authInfo, url)
 {
     var headers = {
-        "Authorization": "Bearer " + config.authToken,
+        "Authorization": "Bearer " + authInfo.accessToken,
         "Content-Type": "application/json",
         "trakt-api-version": "2",
-        "trakt-api-key": config.clientId
+        "trakt-api-key": authInfo.clientId
     };
 
     var response = UrlFetchApp.fetch(url, {
@@ -55,7 +61,7 @@ function getFreshAuth()
             "client_id": config.clientId,
         }
     };
-    var response = UrlFetchApp.fetch(baseUrl + "/oauth/device/code", options);
+    var response = UrlFetchApp.fetch(authUrl, options);
 
     // Retrieve values from response
     var initResp = JSON.parse(response.getContentText());
@@ -84,19 +90,20 @@ function getFreshAuth()
             'muteHttpExceptions': true
         };
 
-        response = UrlFetchApp.fetch(baseUrl + "/oauth/device/token", options);
+        response = UrlFetchApp.fetch(pollUrl, options);
         // Logger.log(response);
 
         // If the response was a success, we're authorised
         if (response.getResponseCode() == 200)
         {
-            // Grab the values we're looking for and save
+            // Grab the values we're looking for and return them
             var newTokens = JSON.parse(response.getContentText());
-            var authProps = new Object();
-            authProps.authToken = newTokens.access_token;
-            authProps.refreshToken = newTokens.refresh_token;
-            authProps.expiry = newTokens.created_at + newTokens.expires_in;
-            return authProps;
+            var authInfo = new Object();
+
+            authInfo.accessToken = newTokens.access_token;
+            authInfo.refreshToken = newTokens.refresh_token;
+            authInfo.expiry = newTokens.created_at + newTokens.expires_in;
+            return authInfo;
         }
         // If the response is anything other than 'pending', something's wrong
         else if (response.getResponseCode() != 400)
@@ -113,32 +120,18 @@ function getFreshAuth()
         queryTime += interval;
     }
 
+    // Polling time expired without success
+    // Can't do much without authentication
+    throw "Polling expired without authorisation.";
 }
 
-function refreshAuth()
+function refreshAuth(refreshToken)
 {
-    // Retrieve refreshable auth info
-    var userProperties = PropertiesService.getUserProperties();
-    var authProps = userProperties.getProperties();
+    // Refresh auth info with refresh token
 
-    // Check if refreshable auth info is there
-    if (!authProps.hasOwnProperty("refreshToken") ||
-        !authProps.hasOwnProperty("authToken"))
-    {
-        Logger.log("No access/refresh token. Need to authenticate.");
-        authProps = getFreshAuth(config);
-        // userProperties.setProperties(authProps);
-    }
-
-    // Check if the auth token has expired yet
-    var now = Date.now() / 1000;
-    if (now < authProps.expiry)
-    {
-        return;
-    }
-
+    // Request refreshed tokens
     var payload = {
-        "refresh_token": authProps.refreshToken,
+        "refresh_token": refreshToken,
         "client_id": config.clientId,
         "client_secret": config.clientSecret,
         "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
@@ -150,28 +143,65 @@ function refreshAuth()
         'Content-Type': 'application/json',
         'payload': payload
     };
-    var response = UrlFetchApp.fetch(authUrl, options);
+
+    var response = UrlFetchApp.fetch(refreshUrl, options);
+
+    // Grab the values we're looking for and return them
     var newTokens = JSON.parse(response.getContentText());
+    var authInfo = new Object();
 
-    // Save new tokens
-    authProps.authToken = newTokens.access_token;
-    authProps.refreshToken = newTokens.refresh_token;
-    authProps.expiry = newTokens.created_at + newTokens.expires_in;
-    // Store in user properties
-    userProperties.setProperties(authProps);
+    authInfo.accessToken = newTokens.access_token;
+    authInfo.refreshToken = newTokens.refresh_token;
+    authInfo.expiry = newTokens.created_at + newTokens.expires_in;
+    return authInfo;
+}
 
-    // Create an object with just the details we need for retrieving data
-    // TODO
-    return authProps;
+function retrieveAuth()
+{
+    // Retrieve refreshable auth info from user properties store
+    var userProperties = PropertiesService.getUserProperties();
+    var authInfo = userProperties.getProperties();
+
+    // Check if auth info is there
+    if (!authInfo.hasOwnProperty("refreshToken") ||
+        !authInfo.hasOwnProperty("accessToken"))
+    {
+        // Fall back to getting fresh auth
+        Logger.log("No access/refresh token. Running first-run authentication.");
+        authInfo = getFreshAuth(config);
+
+        // Save the new auth info back to the user properties store
+        userProperties.setProperties(authInfo);
+    }
+
+    // Check if the auth token has expired yet
+    var now = Date.now() / 1000;
+    if (now > authInfo.expiry)
+    {
+        // Refresh the auth info
+        Logger.log("Access token expired. Refreshing authentication...");
+        authInfo = refreshAuth(authInfo.refreshToken);
+
+        // Save the new auth info back to the user properties store
+        userProperties.setProperties(authInfo);
+    }
+
+    // Return an object with the details we need for retrieving data
+    authInfo.clientId = config.clientId;
+    return authInfo;
 }
 
 function backupCore()
 {
+    // Retrieve auth
+    var authInfo = retrieveAuth();
+
     // Iterate over each of the paths to backup
     for (path of pathList)
     {
+        // Logger.log(path);
         var url = apiUrl + path;
-        var data = getData(config, url);
+        var data = getData(authInfo, url);
 
         // Save the json file in the indicated Google Drive folder
         var filename = String(path).replace("\/", "_").split("?")[0];
@@ -180,45 +210,45 @@ function backupCore()
             filename = config.username;
         }
         filename += ".json";
-        var file = common.findOrCreateFile(config.backupDir, filename, data);
-        // Logger.log("X");
+        var file = common.updateOrCreateFile(config.backupDir, filename, data);
     }
 }
 
 function backupLists()
 {
+    // Retrieve auth
+    var authInfo = retrieveAuth();
+
     // Make a folder for all list files
     var backupFolder = common.findOrCreateFolder(config.backupDir, "lists").getId();
 
     var baseUrl = apiUrl + "lists/";
 
     // Retrieve a list of all the lists
-    var allLists = JSON.parse(getData(config, baseUrl));
+    var allLists = JSON.parse(getData(authInfo, baseUrl));
 
     // Iterate through the lists and retrieve each one
     for (list of allLists)
     {
         // Retrieve list items
         var path = list.ids.slug;
+        // Logger.log(path);
         var url = baseUrl + path;
-        var listItems = JSON.parse(getData(config, url + "/items"));
-        var listComments = JSON.parse(getData(config, url + "/comments"));
+        var listItems = JSON.parse(getData(authInfo, url + "/items"));
+        var listComments = JSON.parse(getData(authInfo, url + "/comments"));
 
         // Add list items & comments to other list data
         list.items = listItems;
         list.comments = listComments;
 
         // Save the json file in the indicated Google Drive folder
-        var file = common.findOrCreateFile(backupFolder, path + ".json", JSON.stringify(list));
-        // Logger.log("X");
+        var output = JSON.stringify(list, null, 4);
+        var file = common.updateOrCreateFile(backupFolder, path + ".json", output);
     }
 }
 
 function main()
 {
-    // Refresh auth
-    refreshAuth();
-
     // Iterate over each of the paths to backup
     backupCore();
 
