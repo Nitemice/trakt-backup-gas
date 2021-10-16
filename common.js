@@ -1,5 +1,5 @@
 // Common GAS Functions
-// v2.0.0 - 2021-04-18
+// v2.2.0 - 2021-10-04
 
 var common = {
 
@@ -38,7 +38,7 @@ var common = {
     },
 
     // Get a ref to given file, or create one if it doesn't exist
-    findOrCreateFile: function(parentDir, filename)
+    findOrCreateFile: function(parentDir, filename, newContent = "")
     {
         // See if there's already a file in the indicated Google Drive folder
         var folder = DriveApp.getFolderById(parentDir);
@@ -51,7 +51,7 @@ var common = {
         {
             // Create a new empty file
             Logger.log("Created file: " + filename);
-            return folder.createFile(filename, "");
+            return folder.createFile(filename, newContent);
         }
     },
 
@@ -68,6 +68,18 @@ var common = {
             Logger.log("Updated file: " + filename);
         }
         return file;
+    },
+
+    // Find file in folder, and delete it
+    deleteFile: function(parentDir, filename)
+    {
+        // See if the indicated file is in the indicated Google Drive folder
+        var folder = DriveApp.getFolderById(parentDir);
+        var files = folder.getFilesByName(filename);
+        if (files.hasNext())
+        {
+            files.next().setTrashed(true);
+        }
     },
 
     // Parse URL path parameters
@@ -131,4 +143,23 @@ var common = {
         return JSON.stringify(JSON.parse(input), null, 4);
     },
 
+    // Collate objects at given path, from array of JSON strings
+    collateArrays: function(path, objects)
+    {
+        var outArray = [];
+        var chunks = path.split('.');
+
+        // Iterate over each object
+        for (const resp of objects)
+        {
+            var obj = JSON.parse(resp);
+            for (const chunk of chunks)
+            {
+                obj = obj[chunk];
+            }
+            outArray = outArray.concat(obj);
+        }
+
+        return outArray;
+    },
 };

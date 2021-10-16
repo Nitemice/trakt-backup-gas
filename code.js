@@ -226,6 +226,7 @@ function backupLists()
 
     // Retrieve a list of all the lists
     var allLists = JSON.parse(getData(authInfo, baseUrl));
+    var listList = [];
 
     // Iterate through the lists and retrieve each one
     for (list of allLists)
@@ -243,7 +244,25 @@ function backupLists()
 
         // Save the json file in the indicated Google Drive folder
         var output = JSON.stringify(list, null, 4);
-        var file = common.updateOrCreateFile(backupFolder, path + ".json", output);
+        var filename = path + ".json";
+        var file = common.updateOrCreateFile(backupFolder, filename, output);
+        listList.push(filename);
+    }
+
+    if (config.removeMissingLists)
+    {
+        // Retrieve files from folder
+        var fileIter = DriveApp.getFolderById(backupFolder).getFiles();
+        while (fileIter.hasNext())
+        {
+            var file = fileIter.next();
+            // If this file isn't in the list of lists,
+            if (!listList.includes(file.getName()))
+            {
+                // Move it to the trash
+                file.setTrashed(true);
+            }
+        }
     }
 }
 

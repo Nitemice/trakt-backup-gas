@@ -3,5 +3,6 @@ const config = {
     "clientId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "clientSecret": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 
-    "backupDir": "xzshxhX8QjQnlNuF_KWzSytboL6EvtSLW"
+    "backupDir": "xzshxhX8QjQnlNuF_KWzSytboL6EvtSLW",
+    "removeMissingLists": false
 };

@@ -56,7 +56,8 @@ const config = {
     "username": "<Trakt username>",
     "clientId": "<Trakt client ID>",
     "clientSecret": "<Trakt client secret>",
-    "backupDir": "<Google Drive directory ID>"
+    "backupDir": "<Google Drive directory ID>",
+    "removeMissingLists": <true/false>
 };
 ```
 
@@ -67,6 +68,8 @@ const config = {
 + `backupDir`: The ID of the Google Drive directory, where exported data
     should be stored. This can be found by navigating to the folder, and
     grabbing the ID from the tail of the URL.
++ `removeMissingLists`: This option will remove backed up list files if they do
+    not match a current list.
 
 ### 3. Load the script into a new Google Apps Script project
 
