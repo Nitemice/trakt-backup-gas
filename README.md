@@ -91,7 +91,9 @@ script, into a Trakt page while logged in as the desired user.
 
 The script can be authorised by running any of the data-retrieval functions,
 including `main()`. Alternatively, if you don't want to retrieve any data,
-`retrieveAuth()` can be run instead.
+`retrieveAuth()` can be run instead. If the authorisation needs to be reset,
+such as if some config has changed, use `resetAuth()` to delete the existing
+credentials and re-authorise the script.
 
 In all cases, if the script cannot detect usable credentials, it will print a
 new unique code to the log, along with the URL of the page where it must be

@@ -191,6 +191,20 @@ function retrieveAuth()
     return authInfo;
 }
 
+function resetAuth()
+{
+    // Wipe refreshable auth info from user properties store
+    var userProperties = PropertiesService.getUserProperties();
+    userProperties.deleteProperty("refreshToken").deleteProperty("accessToken");
+
+    // Get fresh auth
+    Logger.log("Access/refresh token deleted. Running first-run authentication again.");
+    var authInfo = getFreshAuth(config);
+
+    // Save the new auth info back to the user properties store
+    userProperties.setProperties(authInfo);
+}
+
 function backupCore()
 {
     // Retrieve auth

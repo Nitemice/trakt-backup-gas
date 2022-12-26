@@ -1,5 +1,5 @@
 // Common GAS Functions
-// v2.2.0 - 2021-10-04
+// v2.4.0 - 2022-02-19
 
 var common = {
 
@@ -37,6 +37,19 @@ var common = {
         }
     },
 
+    // Find file in folder, and delete it
+    deleteFile: function(parentDir, filename)
+    {
+        // See if the indicated file is in the indicated Google Drive folder
+        var folder = DriveApp.getFolderById(parentDir);
+        var files = folder.getFilesByName(filename);
+        if (files.hasNext())
+        {
+            files.next().setTrashed(true);
+            Logger.log("Deleted file: " + filename);
+        }
+    },
+
     // Get a ref to given file, or create one if it doesn't exist
     findOrCreateFile: function(parentDir, filename, newContent = "")
     {
@@ -70,16 +83,18 @@ var common = {
         return file;
     },
 
-    // Find file in folder, and delete it
-    deleteFile: function(parentDir, filename)
+    // Write blob to file
+    updateOrCreateBlobFile: function(parentDir, filename, content)
     {
-        // See if the indicated file is in the indicated Google Drive folder
+        // Start off by deleting any old file with the same name
+        common.deleteFile(parentDir, filename);
+
+        // Create a new file, with the new contents
         var folder = DriveApp.getFolderById(parentDir);
-        var files = folder.getFilesByName(filename);
-        if (files.hasNext())
-        {
-            files.next().setTrashed(true);
-        }
+        var newFile = folder.createFile(content);
+        newFile.setName(filename);
+        Logger.log("Updated file: " + filename);
+        return newFile;
     },
 
     // Parse URL path parameters
@@ -161,5 +176,16 @@ var common = {
         }
 
         return outArray;
+    },
+
+    // Covert an array into a map, which can be used for tallying
+    arrayToCountMap: function(array, defaultCount = 0)
+    {
+        var output = new Map();
+        array.forEach(element =>
+        {
+            output.set(element, defaultCount);
+        });
+        return output;
     },
 };
