@@ -6,24 +6,29 @@ const pathList = [
     "?extended=full", // profile info
     "collection/movies?extended=metadata",
     "collection/shows?extended=metadata",
-    "comments/all?include_replies=true",
     "followers",
     "following",
     "friends",
     "history/episodes?limit=250",
     "history/movies?limit=250",
-    "ratings/episodes",
-    "ratings/movies",
-    "ratings/seasons",
-    "ratings/shows",
-    "recommendations",
     "stats",
     "watched/movies",
     "watched/shows",
-    "watchlist/episodes",
-    "watchlist/movies",
-    "watchlist/seasons",
-    "watchlist/shows",
+];
+const paginatedPathList = [
+    "comments/all?include_replies=true&limit=250",
+    "likes/comments?limit=250",
+    "likes/lists?limit=250", // Would be good to get actual lists
+    "favorites/movies?limit=250",
+    "favorites/shows?limit=250",
+    "ratings/episodes?limit=250",
+    "ratings/movies?limit=250",
+    "ratings/seasons?limit=250",
+    "ratings/shows?limit=250",
+    "watchlist/episodes?limit=250",
+    "watchlist/movies?limit=250",
+    "watchlist/seasons?limit=250",
+    "watchlist/shows?limit=250",
 ];
 
 // Authentication URLs
@@ -32,20 +37,43 @@ const pollUrl = baseUrl + "/oauth/device/token";
 const refreshUrl = baseUrl + "/oauth/token";
 
 
-function getData(authInfo, url)
+function getData(authInfo, url, getAllPages = false)
 {
-    var headers = {
-        "Authorization": "Bearer " + authInfo.accessToken,
-        "Content-Type": "application/json",
-        "trakt-api-version": "2",
-        "trakt-api-key": authInfo.clientId
+    var options = {
+        "headers":
+        {
+            "Authorization": "Bearer " + authInfo.accessToken,
+            "Content-Type": "application/json",
+            "trakt-api-version": "2",
+            "trakt-api-key": authInfo.clientId
+        }
     };
 
-    var response = UrlFetchApp.fetch(url, {
-        headers: headers
-    });
+    var response = UrlFetchApp.fetch(url, options);
+    var headers = response.getHeaders();
+    var data = response.getContentText();
 
-    return response.getContentText();
+    // Bail out if we only wanted the first page, or
+    // this data isn't paginated, or there's only one page to get
+    if (!getAllPages || !headers.hasOwnProperty("x-pagination-page-count") ||
+        headers["x-pagination-page-count"] == 1)
+    {
+        return data;
+    }
+
+    // Retrieve page count
+    var totalPages = headers["x-pagination-page-count"];
+
+    data = JSON.parse(data);
+    for (let page = 2; page <= totalPages; page++)
+    {
+        var pageUrl = url + `&page=${page}`;
+        response = UrlFetchApp.fetch(pageUrl, options);
+        var newData = JSON.parse(response.getContentText());
+        data = data.concat(newData);
+    }
+
+    return JSON.stringify(data);
 }
 
 function getFreshAuth()
@@ -205,6 +233,18 @@ function resetAuth()
     userProperties.setProperties(authInfo);
 }
 
+function writeBackup(path, data)
+{
+    // Save the json file in the indicated Google Drive folder
+    var filename = String(path).replace("\/", "_").split("?")[0];
+    if (filename.length < 1)
+    {
+        filename = config.username;
+    }
+    filename += ".json";
+    var file = common.updateOrCreateFile(config.backupDir, filename, data);
+}
+
 function backupCore()
 {
     // Retrieve auth
@@ -215,16 +255,19 @@ function backupCore()
     {
         // Logger.log(path);
         var url = apiUrl + path;
-        var data = getData(authInfo, url);
+        var data = getData(authInfo, url, false);
 
-        // Save the json file in the indicated Google Drive folder
-        var filename = String(path).replace("\/", "_").split("?")[0];
-        if (filename.length < 1)
-        {
-            filename = config.username;
-        }
-        filename += ".json";
-        var file = common.updateOrCreateFile(config.backupDir, filename, data);
+        writeBackup(path, data);
+    }
+
+    // Iterate over each of the paginated paths to backup
+    for (path of paginatedPathList)
+    {
+        // Logger.log(path);
+        var url = apiUrl + path;
+        var data = getData(authInfo, url, true);
+
+        writeBackup(path, data);
     }
 }
 
@@ -249,8 +292,8 @@ function backupLists()
         var path = list.ids.slug;
         // Logger.log(path);
         var url = baseUrl + path;
-        var listItems = JSON.parse(getData(authInfo, url + "/items"));
-        var listComments = JSON.parse(getData(authInfo, url + "/comments"));
+        var listItems = JSON.parse(getData(authInfo, url + "/items?limit=50", true));
+        var listComments = JSON.parse(getData(authInfo, url + "/comments?limit=50", true));
 
         // Add list items & comments to other list data
         list.items = listItems;
