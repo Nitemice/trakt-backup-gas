@@ -18,7 +18,6 @@ const pathList = [
 const paginatedPathList = [
     "comments/all?include_replies=true&limit=250",
     "likes/comments?limit=250",
-    "likes/lists?limit=250", // Would be good to get actual lists
     "favorites/movies?limit=250",
     "favorites/shows?limit=250",
     "ratings/episodes?limit=250",
@@ -46,7 +45,8 @@ function getData(authInfo, url, getAllPages = false)
             "Content-Type": "application/json",
             "trakt-api-version": "2",
             "trakt-api-key": authInfo.clientId
-        }
+        },
+        "muteHttpExceptions": true
     };
 
     var response = UrlFetchApp.fetch(url, options);
@@ -233,76 +233,54 @@ function resetAuth()
     userProperties.setProperties(authInfo);
 }
 
-function writeBackup(path, data)
+function getFilename(path)
 {
-    // Save the json file in the indicated Google Drive folder
+    // Sanitise path to use as filename
     var filename = String(path).replace("\/", "_").split("?")[0];
     if (filename.length < 1)
     {
         filename = config.username;
     }
     filename += ".json";
-    var file = common.updateOrCreateFile(config.backupDir, filename, data);
+    return filename;
 }
 
-function backupCore()
+function doListsBackup(lists, authInfo, baseUrl, backupFolder)
 {
-    // Retrieve auth
-    var authInfo = retrieveAuth();
-
-    // Iterate over each of the paths to backup
-    for (path of pathList)
-    {
-        // Logger.log(path);
-        var url = apiUrl + path;
-        var data = getData(authInfo, url, false);
-
-        writeBackup(path, data);
-    }
-
-    // Iterate over each of the paginated paths to backup
-    for (path of paginatedPathList)
-    {
-        // Logger.log(path);
-        var url = apiUrl + path;
-        var data = getData(authInfo, url, true);
-
-        writeBackup(path, data);
-    }
-}
-
-function backupLists()
-{
-    // Retrieve auth
-    var authInfo = retrieveAuth();
-
-    // Make a folder for all list files
-    var backupFolder = common.findOrCreateFolder(config.backupDir, "lists").getId();
-
-    var baseUrl = apiUrl + "lists/";
-
-    // Retrieve a list of all the lists
-    var allLists = JSON.parse(getData(authInfo, baseUrl));
     var listList = [];
 
     // Iterate through the lists and retrieve each one
-    for (list of allLists)
+    for (let list of lists)
     {
         // Retrieve list items
-        var path = list.ids.slug;
+        let path = list.ids.trakt;
         // Logger.log(path);
-        var url = baseUrl + path;
-        var listItems = JSON.parse(getData(authInfo, url + "/items?limit=50", true));
-        var listComments = JSON.parse(getData(authInfo, url + "/comments?limit=50", true));
+        let url = baseUrl + path;
 
-        // Add list items & comments to other list data
-        list.items = listItems;
-        list.comments = listComments;
+        // Add list items & comments to other list data, if we can get it.
+        // There's some weird stuff going on here because some lists just
+        // refuse to return items/comments, e.g. lists get privated
+        if (list.item_count > 0)
+        {
+            let listItems = getData(authInfo, url + "/items?limit=50", true);
+            try
+            {
+                listItems = JSON.parse(listItems)
+            }
+            catch { }
+            list.items = listItems;
+        }
+        if (list.comment_count > 0)
+        {
+            let listComments = JSON.parse(
+                getData(authInfo, url + "/comments?limit=50", true));
+            list.comments = listComments;
+        }
 
         // Save the json file in the indicated Google Drive folder
-        var output = JSON.stringify(list, null, 4);
-        var filename = path + ".json";
-        var file = common.updateOrCreateFile(backupFolder, filename, output);
+        let output = JSON.stringify(list, null, 4);
+        let filename = list.ids.slug + ".json";
+        let file = common.updateOrCreateFile(backupFolder, filename, output);
         listList.push(filename);
     }
 
@@ -321,6 +299,56 @@ function backupLists()
             }
         }
     }
+}
+
+function backupCore()
+{
+    // Retrieve auth
+    var authInfo = retrieveAuth();
+
+    // Iterate over each of the paths to backup
+    for (const path of pathList)
+    {
+        // Logger.log(path);
+        var url = apiUrl + path;
+        var data = getData(authInfo, url, false);
+
+        var filename = getFilename(path);
+        var file = common.updateOrCreateFile(config.backupDir, filename, data);
+
+    }
+
+    // Iterate over each of the paginated paths to backup
+    for (const path of paginatedPathList)
+    {
+        // Logger.log(path);
+        var url = apiUrl + path;
+        var data = getData(authInfo, url, true);
+
+        var filename = getFilename(path);
+        var file = common.updateOrCreateFile(config.backupDir, filename, data);
+    }
+}
+
+function backupLists()
+{
+    // Retrieve auth
+    var authInfo = retrieveAuth();
+
+    // Backup our lists into a folder
+    var backupFolder = common.findOrCreateFolder(config.backupDir, "lists").getId();
+    var listsBaseUrl = apiUrl + "lists/";
+    // Retrieve a list of all the lists
+    var lists = JSON.parse(getData(authInfo, listsBaseUrl));
+    doListsBackup(lists, authInfo, listsBaseUrl, backupFolder);
+
+    // Backup our liked lists into a folder
+    backupFolder = common.findOrCreateFolder(config.backupDir, "liked_lists").getId();
+    // Retrieve a list of all the lists
+    lists = JSON.parse(getData(authInfo, apiUrl + "likes/lists?limit=250", true));
+    lists = lists.map((x) => x.list);
+    listsBaseUrl = baseUrl + "lists/";
+    doListsBackup(lists, authInfo, listsBaseUrl, backupFolder);
 }
 
 function main()
