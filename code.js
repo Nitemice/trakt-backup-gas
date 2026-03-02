@@ -4,8 +4,6 @@ const baseUrl = "https://api.trakt.tv/";
 const apiUrl = baseUrl + "users/me/";
 const pathList = [
     "?extended=full", // profile info
-    "collection/movies?extended=metadata",
-    "collection/shows?extended=metadata",
     "followers",
     "following",
     "friends",
@@ -17,9 +15,12 @@ const pathList = [
 ];
 const paginatedPathList = [
     "comments/all?include_replies=true&limit=250",
+    "collection/movies?extended=metadata&limit=250",
+    "collection/shows?extended=metadata&limit=250",
     "likes/comments?limit=250",
     "favorites/movies?limit=250",
     "favorites/shows?limit=250",
+    "notes/all?limit=250",
     "ratings/episodes?limit=250",
     "ratings/movies?limit=250",
     "ratings/seasons?limit=250",
@@ -29,6 +30,11 @@ const paginatedPathList = [
     "watchlist/seasons?limit=250",
     "watchlist/shows?limit=250",
 ];
+
+const listsPath = "lists/";
+const likedListsPath = "likes/lists?limit=250";
+const listItemsPath = "/items?limit=50";
+const listCommentsPath = "/comments?limit=50";
 
 function getData(authInfo, url, getAllPages = false)
 {
@@ -99,7 +105,7 @@ function doListsBackup(lists, authInfo, baseUrl, backupFolder)
         // refuse to return items/comments, e.g. lists get privated
         if (list.item_count > 0)
         {
-            let listItems = getData(authInfo, url + "/items?limit=50", true);
+            let listItems = getData(authInfo, url + listItemsPath, true);
             try
             {
                 listItems = JSON.parse(listItems)
@@ -110,7 +116,7 @@ function doListsBackup(lists, authInfo, baseUrl, backupFolder)
         if (list.comment_count > 0)
         {
             let listComments = JSON.parse(
-                getData(authInfo, url + "/comments?limit=50", true));
+                getData(authInfo, url + listCommentsPath, true));
             list.comments = listComments;
         }
 
@@ -174,7 +180,7 @@ function backupLists()
     // Backup our lists into a folder
     var backupFolder =
         common.findOrCreateFolder(config.backupDir, "lists").getId();
-    var listsBaseUrl = apiUrl + "lists/";
+    var listsBaseUrl = apiUrl + listsPath;
     // Retrieve a list of all the lists
     var lists = JSON.parse(getData(authInfo, listsBaseUrl));
     doListsBackup(lists, authInfo, listsBaseUrl, backupFolder);
@@ -183,10 +189,9 @@ function backupLists()
     backupFolder =
         common.findOrCreateFolder(config.backupDir, "liked_lists").getId();
     // Retrieve a list of all the lists
-    lists =
-        JSON.parse(getData(authInfo, apiUrl + "likes/lists?limit=250", true));
+    lists = JSON.parse(getData(authInfo, apiUrl + likedListsPath, true));
     lists = lists.map((x) => x.list);
-    listsBaseUrl = baseUrl + "lists/";
+    listsBaseUrl = baseUrl + listsPath;
     doListsBackup(lists, authInfo, listsBaseUrl, backupFolder);
 }
 
